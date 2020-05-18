@@ -11,6 +11,7 @@ using WpfDirect2D.Shapes;
 using Point = System.Windows.Point;
 using Wpf = System.Windows.Media;
 using SharpDX.Direct2D1;
+using System.Collections;
 
 namespace WpfDirect2D
 {
@@ -32,13 +33,15 @@ namespace WpfDirect2D
         private StrokeStyle _lineStrokeStyle;
 
         private bool _renderRequiresInit;
+        private SolidColorBrush _transparentBrush;
         private readonly Dictionary<Wpf.Color, SolidColorBrush> _brushResources;
         private readonly Dictionary<int, BaseGeometry> _createdGeometries;
+        private readonly Dictionary<int, Wpf.Color> _shapeCache = new Dictionary<int, Wpf.Color>();
 
         #region Dependency Properties
 
         public static readonly DependencyProperty ShapesProperty =
-            DependencyProperty.Register("Shapes", typeof(IEnumerable<IShape>), typeof(Direct2DSurface), new PropertyMetadata(OnShapesChanged));
+            DependencyProperty.Register("Shapes", typeof(IList<IShape>), typeof(Direct2DSurface), new PropertyMetadata(OnShapesChanged));
 
         private static void OnShapesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -47,7 +50,9 @@ namespace WpfDirect2D
             {
                 control.SyncBrushesWithShapes();
                 control.SyncGeometriesWithShapes();
+
             }
+
             control?.RequestRender();
         }
 
@@ -72,9 +77,9 @@ namespace WpfDirect2D
         public static readonly DependencyProperty UseRealizationsProperty =
             DependencyProperty.Register("UseRealizations", typeof(bool), typeof(Direct2DSurface), new PropertyMetadata(true));
 
-        public IEnumerable<IShape> Shapes
+        public IList<IShape> Shapes
         {
-            get { return (IEnumerable<IShape>)GetValue(ShapesProperty); }
+            get { return (IList<IShape>)GetValue(ShapesProperty); }
             set { SetValue(ShapesProperty, value); }
         }
 
@@ -253,6 +258,7 @@ namespace WpfDirect2D
                 };
 
                 var renderTarget = new RenderTarget(_d2dFactory, surface, properties);
+                //renderTarget.AntialiasMode = AntialiasMode.Aliased;
                 _context = renderTarget.QueryInterface<DeviceContext1>();
             }
 
@@ -269,6 +275,11 @@ namespace WpfDirect2D
             else
             {
                 IsRealizationValid = false;
+            }
+
+            if (_transparentBrush == null)
+            {
+                _transparentBrush = new SolidColorBrush(_context, new SharpDX.Mathematics.Interop.RawColor4(Color.Transparent.R, Color.Transparent.G, Color.Transparent.B, Color.Transparent.A));
             }
 
             //resync shapes if needed
@@ -339,31 +350,47 @@ namespace WpfDirect2D
             }
 
             _context.BeginDraw();
-            _context.Clear(Color.Transparent);
+            //  _context.Clear(Color.Transparent);
 
             //render the geometries
-            foreach (var shape in Shapes)
+            var shapes = Shapes;
+            for (int i = 0; i < shapes.Count; i++)
             {
+                var shape = shapes[i];
+
                 //get the path geometry for the shape   
-                BaseGeometry pathGeometry;             
-                _createdGeometries.TryGetValue(shape.GeometryHash, out pathGeometry);
+                _createdGeometries.TryGetValue(shape.GeometryHash, out BaseGeometry pathGeometry);
                 if (pathGeometry == null)
                 {
                     continue;
                 }
 
-                //get the fill and stroke brushes
-                var fillBrush = _brushResources[shape.FillColor];
-                var strokeBrush = _brushResources[shape.StrokeColor];
-                var selectedBrush = _brushResources[shape.SelectedColor];
+                SolidColorBrush fillBrush;
+                SolidColorBrush strokeBrush;
+                SolidColorBrush selectedBrush;
 
-                var vectorShape = shape as VectorShape;
-                if (vectorShape != null)
+                if (shape is VectorShape vectorShape)
                 {
+                    //is there another shape already drawn at this spot
+                    if (_shapeCache.TryGetValue(i, out Wpf.Color fillColor) && fillColor == vectorShape.FillColor)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        _shapeCache[i] = vectorShape.FillColor;
+                    }
+
+                    //get the fill and stroke brushes
+                    fillBrush = _brushResources[shape.FillColor];
+                    strokeBrush = _brushResources[shape.StrokeColor];
+                    selectedBrush = _brushResources[shape.SelectedColor];
+
                     var transform = pathGeometry.GetRenderTransform(vectorShape.Scaling, vectorShape.PixelXLocation, vectorShape.PixelYLocation, vectorShape.Rotation, RenderOrigin);
                     if (GeometryRealizationsEnabled)
                     {
                         _context.Transform = transform;
+                        _context.DrawRectangle(new SharpDX.Mathematics.Interop.RawRectangleF(10, 10, 10, 10), _transparentBrush);
 
                         //render the fill realization
                         _context.DrawGeometryRealization(pathGeometry.FilledRealization, shape.IsSelected ? selectedBrush : fillBrush);
@@ -387,10 +414,17 @@ namespace WpfDirect2D
                     //render the line geometry
                     //lines dont have a set point, it has a series of node points which define the line shape
                     //translating here isnt needed
+
+                    //get the fill and stroke brushes
+                    fillBrush = _brushResources[shape.FillColor];
+                    strokeBrush = _brushResources[shape.StrokeColor];
+                    selectedBrush = _brushResources[shape.SelectedColor];
+
                     _context.Transform = Matrix3x2.Identity;
                     _context.DrawGeometry(pathGeometry.Geometry, shape.IsSelected ? selectedBrush : strokeBrush, shape.StrokeWidth, _lineStrokeStyle);
                 }
             }
+
             _context.EndDraw();
         }
 
@@ -490,17 +524,23 @@ namespace WpfDirect2D
                 return;
             }
 
-            //add any missing brushes
-            foreach (var instance in Shapes)
+            if (_brushResources.Count == 0)
             {
-                foreach (var color in instance.GetColorsToCache())
+                _brushResources.Add(Wpf.Colors.Yellow, new SolidColorBrush(_context, Wpf.Colors.Yellow.ToDirect2dColor()));
+                _brushResources.Add(Wpf.Colors.Green, new SolidColorBrush(_context, Wpf.Colors.Green.ToDirect2dColor()));
+                _brushResources.Add(Wpf.Colors.Black, new SolidColorBrush(_context, Wpf.Colors.Black.ToDirect2dColor()));
+            }
+
+            return;
+
+            //add any missing brushes
+            foreach (var color in Shapes.SelectMany(s => s.GetColorsToCache()).Distinct())
+            {
+                if (!_brushResources.ContainsKey(color))
                 {
-                    if (!_brushResources.ContainsKey(color))
-                    {
-                        //color missing, add it
-                        var solidBrush = new SolidColorBrush(_context, color.ToDirect2dColor());
-                        _brushResources.Add(color, solidBrush);
-                    }
+                    //color missing, add it
+                    var solidBrush = new SolidColorBrush(_context, color.ToDirect2dColor());
+                    _brushResources.Add(color, solidBrush);
                 }
             }
 

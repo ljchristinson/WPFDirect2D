@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Windows;
 using System.Windows.Media;
 
 namespace WpfDirect2D.Shapes
@@ -6,10 +8,16 @@ namespace WpfDirect2D.Shapes
     public class VectorShape : IShape
     {
         private string _geometryPath;
+        private Point _pixelLocation;
 
         public VectorShape()
         {
             BrushColorsToCache = new List<Color>();
+        }
+
+        public VectorShape(Point pixelLocation) : this()
+        {
+            PixelLocation = pixelLocation;
         }
 
         public bool IsValid => !string.IsNullOrEmpty(GeometryPath);
@@ -27,9 +35,20 @@ namespace WpfDirect2D.Shapes
             }
         }
 
-        public float PixelXLocation { get; set; }
+        public Point PixelLocation
+        {
+            get { return _pixelLocation; }
+            set
+            {
+                _pixelLocation = value;
+                PixelXLocation = Convert.ToSingle(value.X);
+                PixelYLocation = Convert.ToSingle(value.Y);
+            }
+        }
 
-        public float PixelYLocation { get; set; }
+        public float PixelXLocation { get; private set; }
+
+        public float PixelYLocation { get; private set; }
 
         public float Rotation { get; set; }
 

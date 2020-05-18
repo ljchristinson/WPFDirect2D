@@ -21,30 +21,48 @@ namespace TestApp
         private readonly Random _random;
         private IShape _selectedShape;
         private bool _rerender;
+        private bool _isLoading;
 
         public MainViewModel()
         {
             _random = new Random(10);
             ApplyNumberOfRenderItems = new DelegateCommand(() => GenerateShapes());
-            NumberOfItemsToRender = 10;
+            NumberOfItemsToRender = 20;
             Geometries = new List<IShape>();
 
             Task.Run(() =>
             {
+                int i = 0;
                 while (true)
                 {
-                    Thread.Sleep(100);
-                    Geometries = new List<IShape>(Geometries);
-                    RaisePropertyChanged(nameof(Geometries));
+                    if (_isLoading)
+                    {
+                        continue;
+                    }
 
-                    var item = Geometries.ElementAtOrDefault(_random.Next(0, Geometries.Count));
+                    Thread.Sleep(50);
+
+                    if (Geometries == null)
+                    {
+                        continue;
+                    }
+
+                    if (i > Geometries.Count)
+                    {
+                        i = 0;
+                    }
+
+                    var item = Geometries.ElementAtOrDefault(i++);
                     if (item != null)
                     {
-                        item.IsSelected = !item.IsSelected;
-                        item.FillColor = Colors.Yellow;
+                        //item.IsSelected = !item.IsSelected;
+                        item.FillColor = item.FillColor == Colors.Yellow ? Colors.Green : Colors.Yellow;
                     }
+
+                    Geometries = new List<IShape>(Geometries);
+                    RaisePropertyChanged(nameof(Geometries));
                 }
-            });            
+            });
         }
 
         public ICommand ApplyNumberOfRenderItems { get; private set; }
@@ -71,22 +89,25 @@ namespace TestApp
 
         private void GenerateShapes()
         {
+            _isLoading = true;
             Geometries = null;
             var geometryList = new List<IShape>();
+            const int maxCols = 120;
+            const float shapeSpacing = 10;
 
             int count = 0;
-            while (count < NumberOfItemsToRender)
+            int rowIndex = 0;
+            int colIndex = 0;
+            while(count < NumberOfItemsToRender)
             {
-                var shape = new VectorShape
+                var shape = new VectorShape(new Point(colIndex * shapeSpacing, rowIndex * shapeSpacing))
                 {
-                    GeometryPath = DOT_CIRCLE_VECTOR,
-                    PixelXLocation = GetRandomPixelLocation(),
-                    PixelYLocation = GetRandomPixelLocation(),
+                    GeometryPath = DOT_CIRCLE_VECTOR,                    
                     FillColor = Colors.Black,
                     StrokeColor = Colors.Black,
                     SelectedColor = Colors.Green,
-                    StrokeWidth = 0.5f,
-                    Scaling = 0.2f                    
+                    StrokeWidth = 0.2f,
+                    Scaling = 0.2f
                 };
                 shape.BrushColorsToCache.Add(Colors.Yellow);
                 shape.BrushColorsToCache.Add(Colors.Wheat);
@@ -94,79 +115,120 @@ namespace TestApp
                 shape.BrushColorsToCache.Add(Colors.SaddleBrown);
                 geometryList.Add(shape);
 
-                geometryList.Add(new VectorShape
+                count++;
+                colIndex++;
+
+                if (colIndex > maxCols)
                 {
-                    GeometryPath = DOT_CIRCLE_VECTOR,
-                    PixelXLocation = GetRandomPixelLocation(),
-                    PixelYLocation = GetRandomPixelLocation(),
-                    FillColor = Colors.Blue,
-                    StrokeColor = Colors.Red,
-                    SelectedColor = Colors.Green,
-                    StrokeWidth = 0.5f,
-                    Scaling = 0.4f
-                });
+                    colIndex = 0;
+                    rowIndex++;
+                }
+            }            
 
-                geometryList.Add(new VectorShape
-                {
-                    GeometryPath = MOVE_VECTOR,
-                    PixelXLocation = GetRandomPixelLocation(),
-                    PixelYLocation = GetRandomPixelLocation(),
-                    FillColor = Colors.Black,
-                    StrokeColor = Colors.Black,
-                    SelectedColor = Colors.Green,
-                    StrokeWidth = 0.5f,
-                    Scaling = 0.6f
-                });
-
-                geometryList.Add(new VectorShape
-                {
-                    GeometryPath = MOVE_VECTOR,
-                    PixelXLocation = GetRandomPixelLocation(),
-                    PixelYLocation = GetRandomPixelLocation(),
-                    FillColor = Colors.Blue,
-                    StrokeColor = Colors.Red,
-                    SelectedColor = Colors.Green,
-                    StrokeWidth = 0.5f,
-                    Scaling = 0.8f
-                });
-
-                count += 4;
-            }
-
-            //add a line
-            var line = new LineShape
-            {
-                FillColor = Colors.Blue,
-                StrokeColor = Colors.Blue,
-                SelectedColor = Colors.PaleVioletRed,
-                StrokeWidth = 4f,
-                IsLineClosed = false
-            };
-            line.LineNodes.Add(new Point(10, 40));
-            line.LineNodes.Add(new Point(400, 10));
-            line.LineNodes.Add(new Point(400, 400));
-            geometryList.Add(line);
-
-            //int numLines = 4000;
-            //for (int i = 0; i < numLines; i++)
-            //{
-            //    var line = new LineShape
-            //    {
-            //        FillColor = Colors.Blue,
-            //        StrokeColor = Colors.Blue,
-            //        SelectedColor = Colors.PaleVioletRed,
-            //        StrokeWidth = 4f,
-            //        IsLineClosed = false
-            //    };
-            //    line.LineNodes.Add(new Point(GetRandomPixelLocation(), GetRandomPixelLocation()));
-            //    line.LineNodes.Add(new Point(GetRandomPixelLocation(), GetRandomPixelLocation()));                
-            //    geometryList.Add(line);
-            //}
-
-
+            _isLoading = false;
             Geometries = new List<IShape>(geometryList);
             RaisePropertyChanged(nameof(Geometries));
         }
+
+        //private void GenerateShapes()
+        //{
+        //    _isLoading = true;
+        //    Geometries = null;
+        //    var geometryList = new List<IShape>();
+
+        //    int count = 0;
+        //    while (count < NumberOfItemsToRender)
+        //    {
+        //        var shape = new VectorShape
+        //        {
+        //            GeometryPath = DOT_CIRCLE_VECTOR,
+        //            PixelXLocation = GetRandomPixelLocation(),
+        //            PixelYLocation = GetRandomPixelLocation(),
+        //            FillColor = Colors.Black,
+        //            StrokeColor = Colors.Black,
+        //            SelectedColor = Colors.Green,
+        //            StrokeWidth = 0.5f,
+        //            Scaling = 0.2f
+        //        };
+        //        shape.BrushColorsToCache.Add(Colors.Yellow);
+        //        shape.BrushColorsToCache.Add(Colors.Wheat);
+        //        shape.BrushColorsToCache.Add(Colors.Turquoise);
+        //        shape.BrushColorsToCache.Add(Colors.SaddleBrown);
+        //        geometryList.Add(shape);
+
+        //        geometryList.Add(new VectorShape
+        //        {
+        //            GeometryPath = DOT_CIRCLE_VECTOR,
+        //            PixelXLocation = GetRandomPixelLocation(),
+        //            PixelYLocation = GetRandomPixelLocation(),
+        //            FillColor = Colors.Blue,
+        //            StrokeColor = Colors.Red,
+        //            SelectedColor = Colors.Green,
+        //            StrokeWidth = 0.5f,
+        //            Scaling = 0.4f
+        //        });
+
+        //        geometryList.Add(new VectorShape
+        //        {
+        //            GeometryPath = MOVE_VECTOR,
+        //            PixelXLocation = GetRandomPixelLocation(),
+        //            PixelYLocation = GetRandomPixelLocation(),
+        //            FillColor = Colors.Black,
+        //            StrokeColor = Colors.Black,
+        //            SelectedColor = Colors.Green,
+        //            StrokeWidth = 0.5f,
+        //            Scaling = 0.6f
+        //        });
+
+        //        geometryList.Add(new VectorShape
+        //        {
+        //            GeometryPath = MOVE_VECTOR,
+        //            PixelXLocation = GetRandomPixelLocation(),
+        //            PixelYLocation = GetRandomPixelLocation(),
+        //            FillColor = Colors.Blue,
+        //            StrokeColor = Colors.Red,
+        //            SelectedColor = Colors.Green,
+        //            StrokeWidth = 0.5f,
+        //            Scaling = 0.8f
+        //        });
+
+        //        count += 4;
+        //    }
+
+        //    //add a line
+        //    var line = new LineShape
+        //    {
+        //        FillColor = Colors.Blue,
+        //        StrokeColor = Colors.Blue,
+        //        SelectedColor = Colors.PaleVioletRed,
+        //        StrokeWidth = 4f,
+        //        IsLineClosed = false
+        //    };
+        //    line.LineNodes.Add(new Point(10, 40));
+        //    line.LineNodes.Add(new Point(400, 10));
+        //    line.LineNodes.Add(new Point(400, 400));
+        //    geometryList.Add(line);
+
+        //    //int numLines = 4000;
+        //    //for (int i = 0; i < numLines; i++)
+        //    //{
+        //    //    var line = new LineShape
+        //    //    {
+        //    //        FillColor = Colors.Blue,
+        //    //        StrokeColor = Colors.Blue,
+        //    //        SelectedColor = Colors.PaleVioletRed,
+        //    //        StrokeWidth = 4f,
+        //    //        IsLineClosed = false
+        //    //    };
+        //    //    line.LineNodes.Add(new Point(GetRandomPixelLocation(), GetRandomPixelLocation()));
+        //    //    line.LineNodes.Add(new Point(GetRandomPixelLocation(), GetRandomPixelLocation()));                
+        //    //    geometryList.Add(line);
+        //    //}
+
+        //    _isLoading = false;
+        //    Geometries = new List<IShape>(geometryList);
+        //    RaisePropertyChanged(nameof(Geometries));
+        //}
 
         private int GetRandomPixelLocation()
         {
